@@ -1,0 +1,170 @@
+# ⚡ CSV Compare Agent
+
+A desktop application that compares two CSV files (e.g., a **Datafeed** and a **Flowchart**) to find missing vendor records and date mismatches. Built with Python, it uses a **local AI agent** (Ollama + Phi-3 Mini) for smart column mapping and Q&A — fully offline, no data leaves your machine.
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Ollama](https://img.shields.io/badge/AI-Ollama%20%2B%20Phi--3-green)
+![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local-brightgreen)
+
+---
+
+## 🎯 What It Does
+
+- **Finds missing records** — identifies vendors/tactics present in one file but missing from the other
+- **Detects date mismatches** — compares date ranges (e.g., min/max dates vs. flight dates) between matching records
+- **Smart column mapping** — AI suggests how to map columns with different names across the two files
+- **Unified date column** — consolidates flight dates, go-live dates, and min/max dates into a single output column
+- **Chat Q&A** — ask natural language questions about your loaded data and comparison results
+- **Exports results** — saves the comparison output as a CSV with vendor details, dates, and issue comments
+
+---
+
+## 🖥️ Screenshots
+
+The app features a gamer-style dark theme with neon accents, organized into 4 tabs:
+
+| Tab | Purpose |
+|-----|---------|
+| 📂 **FILES** | Load your two CSV files |
+| 🔗 **MAPPING** | Map columns between files (AI-suggested, user-adjustable) |
+| 📊 **RESULTS** | View comparison output with stats and a data table |
+| 💬 **ASK AGENT** | Chat with the AI about your data |
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Python 3.10+** — [Download here](https://www.python.org/downloads/)
+- **Ollama** *(optional, for AI features)* — [Download here](https://ollama.com)
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/CSVCompareApp.git
+   cd CSVCompareApp
+   ```
+
+2. **Create a virtual environment** *(recommended)*
+   ```bash
+   python -m venv venv
+
+   # On Windows
+   venv\Scripts\activate
+
+   # On macOS/Linux
+   source venv/bin/activate
+   ```
+
+3. **Install Python dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Set up Ollama** *(optional — skip if you only need rule-based matching)*
+   ```bash
+   # After installing Ollama from https://ollama.com
+   ollama pull phi3:mini
+   ```
+   > This downloads the Phi-3 Mini model (~2.3 GB). Required only for AI-powered column mapping and chat Q&A.
+
+5. **Run the app**
+   ```bash
+   python app.py
+   ```
+
+---
+
+## 📖 How to Use
+
+1. **Load Files** — In the FILES tab, browse and select your two CSV files (e.g., Datafeed and Flowchart)
+2. **Map Columns** — The app auto-suggests column mappings. Review, adjust, and check which columns are key columns for matching
+3. **Configure Dates** *(optional)* — Select start/end date columns for date range validation
+4. **Run Comparison** — Click "RUN COMPARISON" to find missing records and date mismatches
+5. **View Results** — See summary stats, browse the results table, and export the output CSV
+6. **Ask Questions** — Use the ASK AGENT tab to ask questions about your data in natural language
+
+---
+
+## 🏗️ Project Structure
+
+```
+CSVCompareApp/
+├── app.py                  # Main application — Tkinter GUI with 4 tabs
+├── comparison_engine.py    # Core comparison logic — finding missing records,
+│                           #   date validation, unified date column, output CSV
+├── agent.py                # Local LLM agent — column mapping suggestions,
+│                           #   date detection, and chat Q&A via Ollama
+├── requirements.txt        # Python dependencies
+├── .gitignore              # Files excluded from Git
+└── README.md               # This file
+```
+
+---
+
+## 📦 Dependencies
+
+### Python Libraries (installed via pip)
+
+| Library | Version | Purpose |
+|---------|---------|---------|
+| `pandas` | Latest | Loads CSV files, processes DataFrames, builds comparison output |
+| `ollama` | Latest | Python client for the local Ollama LLM server |
+
+### Python Standard Library (built-in, no install needed)
+
+| Library | Purpose |
+|---------|---------|
+| `tkinter` | Desktop GUI framework — windows, tabs, buttons, file dialogs |
+| `threading` | Runs AI tasks in the background so the GUI stays responsive |
+| `os` | File path operations — checking existence, getting basenames |
+| `re` | Regex — detects date formats like "Jan-Dec" |
+| `datetime` | Parses dates for month extraction and comparison |
+| `json` | Parses the LLM's JSON responses for column mapping |
+| `typing` | Type hints for cleaner function signatures |
+
+### External Tools (installed separately)
+
+| Tool | Required? | Purpose |
+|------|-----------|---------|
+| [Ollama](https://ollama.com) | Optional | Local LLM inference server |
+| [Phi-3 Mini](https://ollama.com/library/phi3:mini) | Optional | Small language model for AI features |
+
+> **Without Ollama**, the app falls back to rule-based column matching (exact names + synonym dictionary) and keyword-based Q&A. All comparison features work fully without it.
+
+---
+
+## 🤖 How the AI Agent Works
+
+The agent operates with a **two-layer approach**:
+
+### Column Mapping
+1. **Rule-based** *(always runs)* — Matches columns by exact name or common synonyms (e.g., `channel` ↔ `channel name`)
+2. **LLM-enhanced** *(if Ollama available)* — Sends column lists to Phi-3 to intelligently match semantically similar names
+
+### Chat Q&A
+- Sends your question along with data context (column names, sample rows) to the local LLM
+- Falls back to keyword-based answers (counts, filters) if the LLM is unavailable
+
+### Privacy
+- **100% local** — Ollama runs on `localhost:11434`, never contacts external servers
+- **No data shared** — Your CSV files and comparison results never leave your machine
+- **No API keys** — No cloud services, no usage costs, works fully offline
+
+---
+
+## ⚠️ Known Limitations
+
+- **Case-sensitive matching** — `"Google Ads"` and `"google ads"` are treated as different vendors
+- **Performance on large files** — Row-by-row comparison may be slow on files with 100K+ rows
+- **Date ambiguity** — `01-02-2025` is interpreted as DD-MM-YYYY by default; could be wrong for MM-DD-YYYY formats
+- **Single delimiter support** — Assumes comma-separated CSV; tab-delimited or semicolon files may not work
+
+---
+
+## 📄 License
+
+This project is for personal/educational use.

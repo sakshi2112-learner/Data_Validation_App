@@ -1,0 +1,32 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Distribution / Build
+dist/
+build/
+*.spec
+*.egg-info/
+
+# Output files
+comparison_output.csv
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Empty placeholder folders
+models/
