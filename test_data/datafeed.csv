@@ -1,0 +1,11 @@
+PARTNER_NAME,PHM_INGESTION_ID,PUBLISHER_PRODUCT_NAME,CHANNEL_CODE,ACTIVITY_CODE,DEVICE_TYPE_NAME,CAMPAIGN_NAME,BRAND_NAME,METRIC_TYPE,PLACEMENT_ID,PLACEMENT_NAME,PACKAGE_ID,PACKAGE_NAME,MIN_DATE,MAX_DATE,TOTAL_ACTIVITY
+Google Ads,PHM-1001,Brand Search Campaign,Paid Search,SEM-001,Desktop,Brand Campaign 2025,BrandX,Clicks,PL-10001,Brand Search Top,PKG-5001,Search Bundle,15-01-2025,20-09-2025,31000
+Google Ads,PHM-1002,Generic Search Campaign,Paid Search,SEM-002,Desktop,Generic Campaign 2025,BrandX,Clicks,PL-10003,Generic Search Main,PKG-5002,Search Generic Bundle,10-02-2025,05-11-2025,24900
+The Trade Desk,PHM-1003,Display Prospecting,Programmatic,DSP-001,Desktop,Display Awareness 2025,BrandX,Impressions,PL-10004,Standard IAB 300x250,PKG-5003,Programmatic Display,01-03-2025,15-11-2025,97000
+The Trade Desk,PHM-1004,CTV Campaign,Programmatic,DSP-002,CTV,CTV Reach Campaign 2025,BrandX,Video Views,PL-10006,CTV Pre-Roll 30s,PKG-5004,CTV Package,10-03-2025,22-08-2025,59000
+TechCrunch,PHM-1005,Native Article Sponsorship,Direct,SPO-001,Desktop,TechCrunch Sponsored 2025,BrandX,Page Views,PL-10007,Sponsored Article,PKG-5005,Native Sponsorship,01-09-2025,28-12-2025,15000
+Meta,PHM-1006,Facebook Awareness Campaign,Social,SOC-001,Mobile,FB Awareness 2025,BrandX,Impressions,PL-10008,FB News Feed,PKG-5006,Meta Social Bundle,05-01-2025,18-12-2025,157000
+Meta,PHM-1007,Instagram Reels Campaign,Social,SOC-002,Mobile,IG Reels Engagement 2025,BrandX,Video Views,PL-10010,IG Reels Placement,PKG-5007,IG Video Package,20-04-2025,15-10-2025,38000
+Amazon,PHM-1010,Amazon Sponsored Products,E-Commerce,ECM-001,Desktop,Amazon Ads 2025,BrandX,Sales,PL-10011,Sponsored Product Listing,PKG-5008,Amazon Ads Bundle,08-01-2025,14-12-2025,120000
+Pinterest,PHM-1011,Promoted Pins,Social,SOC-003,Mobile,Pinterest Awareness 2025,BrandX,Impressions,PL-10013,Home Feed Pin,PKG-5009,Pinterest Bundle,01-02-2025,18-05-2025,40500
+TikTok,PHM-1012,In-Feed Video,Social,SOC-004,Mobile,TikTok Brand 2025,BrandX,Video Views,PL-10015,For You Page Ad,PKG-5010,TikTok Video Package,10-04-2025,25-09-2025,173000

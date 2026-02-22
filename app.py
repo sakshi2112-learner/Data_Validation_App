@@ -276,8 +276,40 @@ class CSVCompareApp:
     # TAB 2: COLUMN MAPPING
     # ============================================================
     def _build_mapping_tab(self):
-        self.mapping_container = ttk.Frame(self.tab_mapping, style="Dark.TFrame")
-        self.mapping_container.pack(fill="both", expand=True, padx=20, pady=20)
+        # Scrollable mapping tab using Canvas
+        self.mapping_canvas = tk.Canvas(self.tab_mapping, bg=BG_DARK,
+                                        highlightthickness=0)
+        self.mapping_scrollbar = ttk.Scrollbar(self.tab_mapping, orient="vertical",
+                                                command=self.mapping_canvas.yview)
+        self.mapping_container = ttk.Frame(self.mapping_canvas, style="Dark.TFrame")
+
+        self.mapping_container.bind(
+            "<Configure>",
+            lambda e: self.mapping_canvas.configure(
+                scrollregion=self.mapping_canvas.bbox("all")
+            )
+        )
+
+        self.mapping_canvas_window = self.mapping_canvas.create_window(
+            (0, 0), window=self.mapping_container, anchor="nw"
+        )
+
+        # Make inner frame resize with canvas width
+        self.mapping_canvas.bind("<Configure>", lambda e: self.mapping_canvas.itemconfig(
+            self.mapping_canvas_window, width=e.width
+        ))
+
+        self.mapping_canvas.configure(yscrollcommand=self.mapping_scrollbar.set)
+
+        self.mapping_scrollbar.pack(side="right", fill="y")
+        self.mapping_canvas.pack(side="left", fill="both", expand=True,
+                                  padx=20, pady=20)
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            self.mapping_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.mapping_canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         ttk.Label(self.mapping_container,
                   text="Load files first in the FILES tab.",
@@ -329,7 +361,7 @@ class CSVCompareApp:
 
             # File 1 column label
             lbl = tk.Label(row_frame, text=col1, bg=BG_DARK, fg=NEON_PURPLE,
-                           font=FONT_MONO, width=20, anchor="w")
+                           font=FONT_MONO, width=25, anchor="w")
             lbl.pack(side="left", padx=(0, 10))
 
             # Arrow
@@ -342,13 +374,17 @@ class CSVCompareApp:
 
             combo = ttk.Combobox(row_frame, textvariable=map_var,
                                  values=options, state="readonly",
-                                 style="Dark.TCombobox", width=25)
+                                 style="Dark.TCombobox", width=30)
             combo.pack(side="left", padx=(10, 0))
+
+        # Separator line
+        sep = tk.Frame(self.mapping_container, bg=ACCENT, height=1)
+        sep.pack(fill="x", pady=(20, 10))
 
         # Date configuration
         ttk.Label(self.mapping_container,
                   text="DATE VALIDATION (optional)",
-                  style="Heading.TLabel").pack(anchor="w", pady=(20, 5))
+                  style="Heading.TLabel").pack(anchor="w", pady=(10, 5))
         ttk.Label(self.mapping_container,
                   text="Select date columns for range comparison.",
                   style="Dim.TLabel").pack(anchor="w", pady=(0, 10))
@@ -403,7 +439,7 @@ class CSVCompareApp:
         ttk.Button(self.mapping_container,
                    text="🚀  RUN COMPARISON",
                    style="Accent.TButton",
-                   command=self._run_comparison).pack(pady=(20, 0))
+                   command=self._run_comparison).pack(pady=(20, 20))
 
     # ============================================================
     # RUN COMPARISON
