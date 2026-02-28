@@ -21,17 +21,80 @@ MONTH_MAP = {
 MONTH_NAMES = {v: k.capitalize() for k, v in MONTH_MAP.items()}
 
 
-def load_csv(filepath: str) -> pd.DataFrame:
-    """Load a CSV and normalize column names (strip + lowercase)."""
-    df = pd.read_csv(filepath)
-    df.columns = df.columns.str.strip().str.lower()
+def _detect_header_row(filepath: str, skip_rows: int = 0) -> int:
+    """
+    Auto-detect which row contains the actual column headers.
+    Scans the first 20 rows and finds the row where most cells
+    are non-empty text strings (column names), not numbers or blanks.
+    Returns the 0-based row index to use as header.
+    """
+    try:
+        if filepath.lower().endswith(('.xlsx', '.xls')):
+            raw = pd.read_excel(filepath, header=None, nrows=20)
+        else:
+            raw = pd.read_csv(filepath, header=None, nrows=20)
+    except Exception:
+        return skip_rows
+
+    best_row = 0
+    best_score = 0
+
+    for i in range(len(raw)):
+        row = raw.iloc[i]
+        total = len(row)
+        if total == 0:
+            continue
+
+        # Count cells that look like column headers:
+        # non-empty, text (not pure numbers), reasonable length
+        text_count = 0
+        for val in row:
+            if pd.isna(val):
+                continue
+            s = str(val).strip()
+            if s and not s.replace('.', '').replace(',', '').isdigit() and len(s) < 60:
+                text_count += 1
+
+        # Score = ratio of text cells to total cells
+        score = text_count / total
+        if text_count >= 3 and score > best_score:
+            best_score = score
+            best_row = i
+
+    return best_row
+
+
+def smart_read_file(filepath: str, skip_rows: int = None) -> pd.DataFrame:
+    """
+    Read a CSV or Excel file with smart header detection.
+    If skip_rows is provided, uses that. Otherwise auto-detects the header row.
+    """
+    if skip_rows is None:
+        header_row = _detect_header_row(filepath)
+    else:
+        header_row = skip_rows
+
+    if filepath.lower().endswith(('.xlsx', '.xls')):
+        df = pd.read_excel(filepath, header=header_row)
+    else:
+        df = pd.read_csv(filepath, header=header_row)
+
+    # Drop fully empty rows and columns
+    df = df.dropna(how='all').dropna(axis=1, how='all')
+    # Normalize column names
+    df.columns = df.columns.astype(str).str.strip().str.lower()
     return df
 
 
-def get_columns(filepath: str) -> list[str]:
-    """Return the column names of a CSV file."""
-    df = pd.read_csv(filepath, nrows=0)
-    return [c.strip().lower() for c in df.columns.tolist()]
+def load_csv(filepath: str, skip_rows: int = None) -> pd.DataFrame:
+    """Load a CSV or Excel file and normalize column names."""
+    return smart_read_file(filepath, skip_rows)
+
+
+def get_columns(filepath: str, skip_rows: int = None) -> list[str]:
+    """Return the column names of a CSV or Excel file."""
+    df = smart_read_file(filepath, skip_rows)
+    return [c for c in df.columns.tolist() if c and c != 'nan']
 
 
 def detect_date_format(sample_values: list[str]) -> str:

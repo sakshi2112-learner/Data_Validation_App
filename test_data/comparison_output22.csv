@@ -1,0 +1,6 @@
+channel,partner,tactic,comment
+Search,Google,SEM Non-Brand,Missing from Aggregate.csv
+Programmatic,The Trade Desk,Video,Missing from Aggregate.csv
+,DV360,Video,Missing from Flowchart.xlsx
+Search,Google,SEM Brand,"Date mismatch: Expected Jan-Dec, but found Jan-Oct"
+Search,Yahoo,SEM Brand,"Date mismatch: Expected Jan-Dec, but found Mar-Dec"

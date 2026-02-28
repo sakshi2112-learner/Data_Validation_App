@@ -276,6 +276,67 @@ Only include confident matches."""
         }
 
     # -------------------------------------------------------
+    # Tool: Enhance comparison comments with AI
+    # -------------------------------------------------------
+    def enhance_comments(self, output_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Use the LLM to rewrite comparison comments to be smarter and more descriptive.
+        Sends all results in ONE batch call for speed.
+        Returns the dataframe with improved comments.
+        """
+        if not self.available or output_df is None or output_df.empty:
+            return output_df
+
+        # Build a summary of all records with their comments
+        records_text = []
+        for i, row in output_df.iterrows():
+            # Get key column values (all columns except 'comment')
+            key_vals = {col: str(row[col]) for col in output_df.columns if col != "comment"}
+            key_str = ", ".join(f"{k}={v}" for k, v in key_vals.items() if v and v != "nan")
+            records_text.append(f"Row {i}: [{key_str}] → Comment: {row.get('comment', '')}")
+
+        all_records = "\n".join(records_text)
+
+        prompt = f"""Below are comparison results between two CSV files. Each row has key column values and a basic comment.
+
+Rewrite EACH comment to be smarter and more descriptive. Rules:
+- For missing records: mention the key values (like partner name, tactic) and which file it's missing from
+- For date mismatches: mention the key values and explain the expected vs actual date range clearly
+- Keep each comment to 1 sentence, concise but informative
+- Return ONLY the rewritten comments, one per line, in the same order as input
+- Each line should be JUST the comment text, nothing else
+
+Records:
+{all_records}
+
+Rewritten comments (one per line):"""
+
+        response = self._ask_llm(
+            prompt,
+            "You rewrite data comparison comments to be clear, specific, and professional. Output only the rewritten comments, one per line.",
+            max_tokens=512,
+        )
+
+        if not response:
+            return output_df
+
+        # Parse response — one comment per line
+        new_comments = [line.strip() for line in response.strip().split("\n") if line.strip()]
+
+        # Only apply if we got the right number of comments
+        if len(new_comments) == len(output_df):
+            output_df = output_df.copy()
+            output_df["comment"] = new_comments
+        else:
+            # Try to match as many as possible
+            output_df = output_df.copy()
+            for i in range(min(len(new_comments), len(output_df))):
+                if new_comments[i]:
+                    output_df.iloc[i, output_df.columns.get_loc("comment")] = new_comments[i]
+
+        return output_df
+
+    # -------------------------------------------------------
     # Tool: Q&A over loaded data
     # -------------------------------------------------------
     def query_data(
@@ -285,9 +346,18 @@ Only include confident matches."""
     ) -> str:
         """
         Answer a question about the loaded CSV data.
-        dataframes: {"File 1": df1, "File 2": df2, "Output": output_df}
+        Tries rule-based first (instant), falls back to LLM for complex questions.
         """
-        # Build context from dataframes (limit rows for speed)
+        # Try rule-based first — instant answers for common questions
+        rule_answer = self._rule_based_qa(question, dataframes)
+        if not rule_answer.startswith("I can answer questions about"):
+            return rule_answer
+
+        # Fall back to LLM for complex questions
+        if not self.available:
+            return rule_answer
+
+        # Build minimal context for speed
         context_parts = []
         for name, df in dataframes.items():
             if df is not None and not df.empty:
@@ -295,18 +365,14 @@ Only include confident matches."""
                     f"--- {name} ---\n"
                     f"Columns: {list(df.columns)}\n"
                     f"Total rows: {len(df)}\n"
-                    f"Sample data (first 15 rows):\n{df.head(15).to_string(index=False)}\n"
+                    f"Sample (first 5 rows):\n{df.head(5).to_string(index=False)}\n"
                 )
 
         context = "\n".join(context_parts)
 
-        if not self.available:
-            return self._rule_based_qa(question, dataframes)
-
         prompt = f"""You are an assistant that ONLY answers questions about the CSV data provided below.
 Do NOT answer general knowledge questions, coding questions, or anything unrelated to this data.
 If the question is not about the data, say "I can only answer questions about your loaded CSV files and comparison results."
-If you cannot find the answer in the data, say "I could not find that information in the loaded data."
 
 Data:
 {context}
@@ -318,7 +384,7 @@ Answer concisely based ONLY on the data above:"""
         response = self._ask_llm(
             prompt,
             "You are a CSV data analysis assistant. ONLY answer questions about the provided CSV data and comparison results. Refuse any unrelated questions. Be concise.",
-            max_tokens=256,
+            max_tokens=128,
         )
         if not response:
             return "I could not generate an answer. Please try rephrasing your question."
@@ -327,24 +393,55 @@ Answer concisely based ONLY on the data above:"""
     def _rule_based_qa(
         self, question: str, dataframes: dict[str, pd.DataFrame]
     ) -> str:
-        """Simple rule-based Q&A fallback when LLM is not available."""
+        """Comprehensive rule-based Q&A fallback when LLM is not available."""
         q = question.lower()
         output_df = dataframes.get("Output")
+        df1 = dataframes.get("File 1")
+        df2 = dataframes.get("File 2")
 
+        # Questions about comparison results
         if output_df is not None and not output_df.empty:
             if "missing" in q:
-                missing = output_df[output_df["comment"].str.contains("Missing", na=False)]
+                missing = output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)]
                 if not missing.empty:
                     return f"There are {len(missing)} missing records:\n{missing.to_string(index=False)}"
                 return "No missing records found."
 
             if "mismatch" in q or "date" in q:
-                mismatches = output_df[output_df["comment"].str.contains("mismatch", na=False)]
+                mismatches = output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)]
                 if not mismatches.empty:
                     return f"There are {len(mismatches)} date mismatches:\n{mismatches.to_string(index=False)}"
                 return "No date mismatches found."
 
             if "how many" in q or "count" in q or "total" in q:
-                return f"Total issues found: {len(output_df)}"
+                total = len(output_df)
+                missing_c = len(output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)])
+                mismatch_c = len(output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)])
+                return f"Total issues: {total}\n- Missing records: {missing_c}\n- Date mismatches: {mismatch_c}"
 
-        return "I was unable to generate an answer based on the available data."
+            if "summary" in q or "result" in q or "issue" in q:
+                return f"Comparison found {len(output_df)} issues:\n{output_df.to_string(index=False, max_rows=20)}"
+
+        # Questions about individual files
+        if ("column" in q or "field" in q) and df1 is not None:
+            cols1 = list(df1.columns) if df1 is not None else []
+            cols2 = list(df2.columns) if df2 is not None else []
+            return f"File 1 columns ({len(cols1)}): {', '.join(cols1)}\nFile 2 columns ({len(cols2)}): {', '.join(cols2)}"
+
+        if ("row" in q or "record" in q) and ("how many" in q or "count" in q):
+            parts = []
+            if df1 is not None:
+                parts.append(f"File 1: {len(df1)} rows")
+            if df2 is not None:
+                parts.append(f"File 2: {len(df2)} rows")
+            return "\n".join(parts) if parts else "No files loaded."
+
+        if "file" in q and ("info" in q or "about" in q or "detail" in q):
+            parts = []
+            if df1 is not None:
+                parts.append(f"File 1: {len(df1)} rows, {len(df1.columns)} columns")
+            if df2 is not None:
+                parts.append(f"File 2: {len(df2)} rows, {len(df2.columns)} columns")
+            return "\n".join(parts) if parts else "No files loaded."
+
+        return "I can answer questions about: missing records, date mismatches, column names, row counts, and comparison results. Try asking about one of these!"

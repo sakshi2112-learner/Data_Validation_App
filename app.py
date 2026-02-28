@@ -51,7 +51,12 @@ class CSVCompareApp:
         self.root.title("⚡ CSV Compare Agent")
         self.root.geometry("1100x750")
         self.root.configure(bg=BG_DARK)
-        self.root.minsize(900, 650)
+        self.root.minsize(800, 550)
+        self.root.resizable(True, True)
+
+        # Make root grid responsive
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
 
         # State
         self.file1_path = tk.StringVar()
@@ -117,9 +122,9 @@ class CSVCompareApp:
 
         # Combobox
         style.configure("Dark.TCombobox",
-                        fieldbackground=BG_INPUT, background=BG_CARD,
-                        foreground=FG_TEXT, font=FONT_BODY,
-                        selectbackground=ACCENT, selectforeground=BG_DARK)
+                        fieldbackground="white", background=BG_CARD,
+                        foreground="black", font=FONT_BODY,
+                        selectbackground=ACCENT, selectforeground="black")
 
         # Fix combobox dropdown list colors (popdown listbox)
         self.root.option_add("*TCombobox*Listbox.background", "white")
@@ -179,10 +184,10 @@ class CSVCompareApp:
         container.pack(fill="both", expand=True, padx=20, pady=20)
 
         # File 1
-        ttk.Label(container, text="FILE 1 — Datafeed CSV",
+        ttk.Label(container, text="FILE 1 — Flowchart",
                   style="Heading.TLabel").pack(anchor="w", pady=(0, 5))
         f1_frame = ttk.Frame(container, style="Dark.TFrame")
-        f1_frame.pack(fill="x", pady=(0, 15))
+        f1_frame.pack(fill="x", pady=(0, 5))
 
         self.f1_entry = tk.Entry(f1_frame, textvariable=self.file1_path,
                                  bg=BG_INPUT, fg=FG_TEXT, font=FONT_MONO,
@@ -195,11 +200,23 @@ class CSVCompareApp:
                    style="Dark.TButton",
                    command=lambda: self._browse_file(self.file1_path)).pack(side="right")
 
+        # Skip rows for File 1
+        f1_skip_frame = ttk.Frame(container, style="Dark.TFrame")
+        f1_skip_frame.pack(fill="x", pady=(0, 15))
+        tk.Label(f1_skip_frame, text="Header row skip (Auto or number):",
+                 bg=BG_DARK, fg=FG_DIM, font=FONT_SMALL).pack(side="left")
+        self.f1_skip_var = tk.StringVar(value="Auto")
+        tk.Entry(f1_skip_frame, textvariable=self.f1_skip_var,
+                 bg=BG_INPUT, fg=FG_TEXT, font=FONT_SMALL,
+                 insertbackground=ACCENT, bd=0, width=8,
+                 highlightthickness=1, highlightcolor=BG_CARD,
+                 highlightbackground=BG_CARD).pack(side="left", padx=(10, 0), ipady=4)
+
         # File 2
-        ttk.Label(container, text="FILE 2 — Flowchart CSV",
+        ttk.Label(container, text="FILE 2 — Aggregate / Data Feed",
                   style="Heading.TLabel").pack(anchor="w", pady=(10, 5))
         f2_frame = ttk.Frame(container, style="Dark.TFrame")
-        f2_frame.pack(fill="x", pady=(0, 20))
+        f2_frame.pack(fill="x", pady=(0, 5))
 
         self.f2_entry = tk.Entry(f2_frame, textvariable=self.file2_path,
                                  bg=BG_INPUT, fg=FG_TEXT, font=FONT_MONO,
@@ -211,6 +228,18 @@ class CSVCompareApp:
         ttk.Button(f2_frame, text="Browse",
                    style="Dark.TButton",
                    command=lambda: self._browse_file(self.file2_path)).pack(side="right")
+
+        # Skip rows for File 2
+        f2_skip_frame = ttk.Frame(container, style="Dark.TFrame")
+        f2_skip_frame.pack(fill="x", pady=(0, 20))
+        tk.Label(f2_skip_frame, text="Header row skip (Auto or number):",
+                 bg=BG_DARK, fg=FG_DIM, font=FONT_SMALL).pack(side="left")
+        self.f2_skip_var = tk.StringVar(value="Auto")
+        tk.Entry(f2_skip_frame, textvariable=self.f2_skip_var,
+                 bg=BG_INPUT, fg=FG_TEXT, font=FONT_SMALL,
+                 insertbackground=ACCENT, bd=0, width=8,
+                 highlightthickness=1, highlightcolor=BG_CARD,
+                 highlightbackground=BG_CARD).pack(side="left", padx=(10, 0), ipady=4)
 
         # Analyze button
         self.analyze_btn = ttk.Button(
@@ -226,7 +255,12 @@ class CSVCompareApp:
 
     def _browse_file(self, var):
         path = filedialog.askopenfilename(
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+            filetypes=[
+                ("CSV & Excel files", "*.csv *.xlsx *.xls"),
+                ("CSV files", "*.csv"),
+                ("Excel files", "*.xlsx *.xls"),
+                ("All files", "*.*"),
+            ]
         )
         if path:
             var.set(path)
@@ -246,13 +280,31 @@ class CSVCompareApp:
             self._set_status(f"File not found: {f2}", ERROR)
             return
 
+        # Check if both files are the same
+        if os.path.abspath(f1) == os.path.abspath(f2):
+            messagebox.showwarning("Same File", "Both files are the same! Please select two different files.")
+            return
+
         self._set_status("Analyzing files...", ACCENT)
 
+        # Parse skip rows
+        def _parse_skip(var_val):
+            v = var_val.strip().lower()
+            if v == "auto" or v == "":
+                return None  # auto-detect
+            try:
+                return int(v)
+            except ValueError:
+                return None
+
+        skip1 = _parse_skip(self.f1_skip_var.get())
+        skip2 = _parse_skip(self.f2_skip_var.get())
+
         try:
-            self.cols1 = get_columns(f1)
-            self.cols2 = get_columns(f2)
-            self.df1 = load_csv(f1)
-            self.df2 = load_csv(f2)
+            self.cols1 = get_columns(f1, skip_rows=skip1)
+            self.cols2 = get_columns(f2, skip_rows=skip2)
+            self.df1 = load_csv(f1, skip_rows=skip1)
+            self.df2 = load_csv(f2, skip_rows=skip2)
 
             # Show preview
             for w in self.col_preview_frame.winfo_children():
@@ -394,7 +446,7 @@ class CSVCompareApp:
 
         # Date configuration
         ttk.Label(self.mapping_container,
-                  text="DATE VALIDATION (optional)",
+                  text="DATE VALIDATION",
                   style="Heading.TLabel").pack(anchor="w", pady=(10, 5))
         ttk.Label(self.mapping_container,
                   text="Select date columns for range comparison.",
@@ -527,8 +579,8 @@ class CSVCompareApp:
             }
             print(f"[Date Config] {date_config}")
 
-        # Columns for output = all checked (key) columns
-        output_cols = list(key_mapping.keys())
+        # Columns for output = ALL checked columns (whether mapped or not)
+        output_cols = [col1 for col1, check_var in self.key_checks.items() if check_var.get()]
 
         # Output path
         script_dir = os.path.dirname(os.path.abspath(self.file1_path.get()))
@@ -550,8 +602,12 @@ class CSVCompareApp:
                 # Load output for display
                 if os.path.exists(self.output_path):
                     self.output_df = pd.read_csv(self.output_path).fillna("")
+                    # Remove auto-downloaded file — user will choose to save later
+                    os.remove(self.output_path)
 
                 self.root.after(0, lambda: self._show_results(result))
+                # After results are shown, prompt user to save
+                self.root.after(500, self._prompt_save_results)
 
             except Exception as e:
                 self.root.after(0, lambda: self._set_status(f"Error: {e}", ERROR))
@@ -629,9 +685,9 @@ class CSVCompareApp:
             for col in columns:
                 tree.heading(col, text=col.upper())
                 if col == "comment":
-                    tree.column(col, width=700, minwidth=300, anchor="w", stretch=True)
+                    tree.column(col, width=500, minwidth=300, anchor="w", stretch=True)
                 else:
-                    tree.column(col, width=200, minwidth=100, anchor="w", stretch=False)
+                    tree.column(col, width=150, minwidth=80, anchor="w", stretch=False)
 
             for _, row in self.output_df.iterrows():
                 values = ["" if str(v).strip().lower() == "nan" else v for v in row]
@@ -686,15 +742,31 @@ class CSVCompareApp:
                       text="No issues found! Files match perfectly.",
                       style="Success.TLabel").pack(pady=10)
 
+    def _prompt_save_results(self):
+        """Ask user if they want to save results after comparison."""
+        if self.output_df is not None and not self.output_df.empty:
+            save = messagebox.askyesno(
+                "Save Results",
+                "Comparison complete! Do you want to save the output file?"
+            )
+            if save:
+                self._export_results()
+
     def _export_results(self):
         if self.output_df is not None:
             path = filedialog.asksaveasfilename(
                 defaultextension=".csv",
-                filetypes=[("CSV files", "*.csv")],
+                filetypes=[
+                    ("CSV files", "*.csv"),
+                    ("Excel files", "*.xlsx"),
+                ],
                 initialfile="comparison_output.csv"
             )
             if path:
-                self.output_df.to_csv(path, index=False)
+                if path.lower().endswith('.xlsx'):
+                    self.output_df.to_excel(path, index=False)
+                else:
+                    self.output_df.to_csv(path, index=False)
                 self._set_status(f"Exported to: {path}", SUCCESS)
 
     # ============================================================

@@ -1,6 +1,6 @@
 # ⚡ CSV Compare Agent
 
-A desktop application that compares two CSV files (e.g., a **Datafeed** and a **Flowchart**) to find missing vendor records and date mismatches. Built with Python, it uses a **local AI agent** (Ollama + Phi-3 Mini) for smart column mapping and Q&A — fully offline, no data leaves your machine.
+A desktop application that compares two CSV files (e.g., a **Flowchart** and an **Aggregate/Data Feed**) to find missing vendor records and date mismatches. Built with Python, it uses a **local AI agent** (Ollama + Phi-3 Mini) for smart column mapping and Q&A — fully offline, no data leaves your machine.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Ollama](https://img.shields.io/badge/AI-Ollama%20%2B%20Phi--3-green)
@@ -11,12 +11,13 @@ A desktop application that compares two CSV files (e.g., a **Datafeed** and a **
 
 ## 🎯 What It Does
 
-- **Finds missing records** — identifies vendors/tactics present in one file but missing from the other
-- **Detects date mismatches** — compares date ranges (e.g., min/max dates vs. flight dates) between matching records
-- **Smart column mapping** — AI suggests how to map columns with different names across the two files
-- **Unified date column** — consolidates flight dates, go-live dates, and min/max dates into a single output column
+- **Finds missing records** — identifies vendors/tactics present in one file but missing from the other, with clear comments mentioning the filename
+- **Detects date mismatches** — extracts months from start/end date columns and compares against flight/range columns (e.g., `Jan - Jun`), supporting any date format
+- **Smart column mapping** — AI suggests how to map columns with different names across the two files; works with 10+ columns
+- **Flexible date parsing** — handles any date format (`MM/DD/YY`, `DD-MM-YYYY`, `YYYY-MM-DD`, etc.) using pandas auto-detection
+- **Output control** — only columns you explicitly check/map appear in the output CSV, plus a descriptive `comment` column
 - **Chat Q&A** — ask natural language questions about your loaded data and comparison results
-- **Exports results** — saves the comparison output as a CSV with vendor details, dates, and issue comments
+- **Exports results** — save the comparison output as a CSV with vendor details and issue comments
 
 ---
 
@@ -26,10 +27,10 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 | Tab | Purpose |
 |-----|---------|
-| 📂 **FILES** | Load your two CSV files |
-| 🔗 **MAPPING** | Map columns between files (AI-suggested, user-adjustable) |
-| 📊 **RESULTS** | View comparison output with stats and a data table |
-| 💬 **ASK AGENT** | Chat with the AI about your data |
+| 📂 **FILES** | Load your Flowchart and Aggregate/Data Feed CSV files |
+| 🔗 **MAPPING** | Map columns between files (AI-suggested, user-adjustable) + date validation config |
+| 📊 **RESULTS** | View comparison output with stats, data table, and detail panel for comments |
+| 💬 **ASK AGENT** | Chat with the AI about your data (disabled during processing, answers only data questions) |
 
 ---
 
@@ -44,7 +45,7 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/CSVCompareApp.git
+   git clone https://github.com/sakshi2112-learner/Data_Validation_App.git
    cd CSVCompareApp
    ```
 
@@ -61,7 +62,7 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 3. **Install Python dependencies**
    ```bash
-   pip install -r requirements.txt
+   pip install pandas ollama
    ```
 
 4. **Set up Ollama** *(optional — skip if you only need rule-based matching)*
@@ -80,12 +81,13 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 ## 📖 How to Use
 
-1. **Load Files** — In the FILES tab, browse and select your two CSV files (e.g., Datafeed and Flowchart)
+1. **Load Files** — In the FILES tab, browse and select your Flowchart (File 1) and Aggregate/Data Feed (File 2) CSV files
 2. **Map Columns** — The app auto-suggests column mappings. Review, adjust, and check which columns are key columns for matching
-3. **Configure Dates** *(optional)* — Select start/end date columns for date range validation
+3. **Configure Dates** — Select start date, end date, and flight/range columns for date validation. The app auto-detects date formats
 4. **Run Comparison** — Click "RUN COMPARISON" to find missing records and date mismatches
-5. **View Results** — See summary stats, browse the results table, and export the output CSV
-6. **Ask Questions** — Use the ASK AGENT tab to ask questions about your data in natural language
+5. **View Results** — See summary stats (total issues, missing records, date mismatches), browse the results table, click a row to see full comment details
+6. **Save Output** — Click "EXPORT TO CUSTOM LOCATION" to save the CSV (no auto-download)
+7. **Ask Questions** — Use the ASK AGENT tab to ask questions about your data in natural language
 
 ---
 
@@ -94,10 +96,10 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 ```
 CSVCompareApp/
 ├── app.py                  # Main application — Tkinter GUI with 4 tabs
-├── comparison_engine.py    # Core comparison logic — finding missing records,
-│                           #   date validation, unified date column, output CSV
+├── comparison_engine.py    # Core comparison logic — missing records,
+│                           #   flexible date validation, output CSV
 ├── agent.py                # Local LLM agent — column mapping suggestions,
-│                           #   date detection, and chat Q&A via Ollama
+│                           #   date role detection, and chat Q&A via Ollama
 ├── requirements.txt        # Python dependencies
 ├── .gitignore              # Files excluded from Git
 └── README.md               # This file
@@ -111,7 +113,7 @@ CSVCompareApp/
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| `pandas` | Latest | Loads CSV files, processes DataFrames, builds comparison output |
+| `pandas` | Latest | Loads CSV files, processes DataFrames, auto-parses dates |
 | `ollama` | Latest | Python client for the local Ollama LLM server |
 
 ### Python Standard Library (built-in, no install needed)
@@ -121,8 +123,8 @@ CSVCompareApp/
 | `tkinter` | Desktop GUI framework — windows, tabs, buttons, file dialogs |
 | `threading` | Runs AI tasks in the background so the GUI stays responsive |
 | `os` | File path operations — checking existence, getting basenames |
-| `re` | Regex — detects date formats like "Jan-Dec" |
-| `datetime` | Parses dates for month extraction and comparison |
+| `re` | Regex — detects date range formats like "Jan - Jun" |
+| `datetime` | Date parsing utilities |
 | `json` | Parses the LLM's JSON responses for column mapping |
 | `typing` | Type hints for cleaner function signatures |
 
@@ -143,11 +145,17 @@ The agent operates with a **two-layer approach**:
 
 ### Column Mapping
 1. **Rule-based** *(always runs)* — Matches columns by exact name or common synonyms (e.g., `channel` ↔ `channel name`)
-2. **LLM-enhanced** *(if Ollama available)* — Sends column lists to Phi-3 to intelligently match semantically similar names
+2. **LLM-enhanced** *(if Ollama available)* — Sends column lists + sample data to Phi-3 to intelligently match semantically similar names
+
+### Date Validation
+- **Auto-detects date roles** — determines which file has min/max date columns vs. flight/range columns
+- **Flexible date parsing** — uses `pd.to_datetime()` to parse any date format (MM/DD/YY, DD-MM-YYYY, etc.)
+- **Month extraction** — extracts months from start/end dates and compares against flight range (e.g., `Jan - Jun`)
 
 ### Chat Q&A
-- Sends your question along with data context (column names, sample rows) to the local LLM
-- Falls back to keyword-based answers (counts, filters) if the LLM is unavailable
+- **With LLM** — Sends your question with data context to the local LLM; restricted to only answer data-related questions
+- **Without LLM** — Falls back to comprehensive keyword-based answers (missing records, mismatches, column info, row counts)
+- Send button is disabled during processing to prevent duplicate queries
 
 ### Privacy
 - **100% local** — Ollama runs on `localhost:11434`, never contacts external servers
@@ -158,9 +166,8 @@ The agent operates with a **two-layer approach**:
 
 ## ⚠️ Known Limitations
 
-- **Case-sensitive matching** — `"Google Ads"` and `"google ads"` are treated as different vendors
+- **Case-insensitive matching** — Column names are normalized to lowercase for comparison
 - **Performance on large files** — Row-by-row comparison may be slow on files with 100K+ rows
-- **Date ambiguity** — `01-02-2025` is interpreted as DD-MM-YYYY by default; could be wrong for MM-DD-YYYY formats
 - **Single delimiter support** — Assumes comma-separated CSV; tab-delimited or semicolon files may not work
 
 ---
