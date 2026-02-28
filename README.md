@@ -62,7 +62,7 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 3. **Install Python dependencies**
    ```bash
-   pip install pandas ollama
+   pip install -r requirements.txt
    ```
 
 4. **Set up Ollama** *(optional — skip if you only need rule-based matching)*
@@ -113,8 +113,9 @@ CSVCompareApp/
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| `pandas` | Latest | Loads CSV files, processes DataFrames, auto-parses dates |
+| `pandas` | Latest | Loads CSV/Excel files, processes DataFrames, auto-parses dates |
 | `ollama` | Latest | Python client for the local Ollama LLM server |
+| `openpyxl` | Latest | Reads `.xlsx` Excel files |
 
 ### Python Standard Library (built-in, no install needed)
 
