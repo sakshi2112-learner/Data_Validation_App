@@ -118,7 +118,15 @@ class CSVCompareApp:
         # Combobox
         style.configure("Dark.TCombobox",
                         fieldbackground=BG_INPUT, background=BG_CARD,
-                        foreground=FG_TEXT, font=FONT_BODY)
+                        foreground=FG_TEXT, font=FONT_BODY,
+                        selectbackground=ACCENT, selectforeground=BG_DARK)
+
+        # Fix combobox dropdown list colors (popdown listbox)
+        self.root.option_add("*TCombobox*Listbox.background", "white")
+        self.root.option_add("*TCombobox*Listbox.foreground", "black")
+        self.root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "black")
+        self.root.option_add("*TCombobox*Listbox.font", FONT_BODY)
 
     # ============================================================
     # HEADER
@@ -330,7 +338,10 @@ class CSVCompareApp:
         # Get agent suggestions
         suggested = {}
         if self.agent:
-            suggested = self.agent.suggest_column_mapping(self.cols1, self.cols2)
+            suggested = self.agent.suggest_column_mapping(
+                self.cols1, self.cols2,
+                df1=self.df1, df2=self.df2,
+            )
 
         # Key columns mapping
         key_frame = ttk.Frame(self.mapping_container, style="Dark.TFrame")
@@ -392,47 +403,73 @@ class CSVCompareApp:
         date_frame = ttk.Frame(self.mapping_container, style="Dark.TFrame")
         date_frame.pack(fill="x")
 
-        # Auto-detect date columns
-        date_cols_1 = []
-        date_cols_2 = []
+        # Auto-detect date roles using classify_date_role
+        f1_role = None
+        f2_role = None
         if self.agent:
-            date_cols_1 = self.agent.detect_date_columns(self.file1_path.get())
-            date_cols_2 = self.agent.detect_date_columns(self.file2_path.get())
+            f1_role = self.agent.classify_date_role(self.file1_path.get())
+            f2_role = self.agent.classify_date_role(self.file2_path.get())
+
+        # Determine which file has min/max dates and which has flight/range
+        # The file with min_max role provides start/end date columns
+        # The file with range role provides the flight column
+        default_f1_start = "-- None --"
+        default_f1_end = "-- None --"
+        default_f2_range = "-- None --"
+
+        if f1_role and f2_role:
+            if f1_role["role"] == "min_max" and f2_role["role"] == "range":
+                # File 1 has min/max, File 2 has flight — standard case
+                default_f1_start = f1_role.get("start_col") or "-- None --"
+                default_f1_end = f1_role.get("end_col") or "-- None --"
+                default_f2_range = f2_role.get("range_col") or "-- None --"
+            elif f1_role["role"] == "range" and f2_role["role"] == "min_max":
+                # Swapped: File 1 has flight, File 2 has min/max
+                # We still use File 1 start/end dropdowns for the min/max file
+                default_f1_start = f2_role.get("start_col") or "-- None --"
+                default_f1_end = f2_role.get("end_col") or "-- None --"
+                default_f2_range = f1_role.get("range_col") or "-- None --"
+            elif f1_role["role"] == "min_max":
+                default_f1_start = f1_role.get("start_col") or "-- None --"
+                default_f1_end = f1_role.get("end_col") or "-- None --"
+            elif f2_role["role"] == "min_max":
+                default_f1_start = f2_role.get("start_col") or "-- None --"
+                default_f1_end = f2_role.get("end_col") or "-- None --"
 
         # File 1 start date
         r1 = ttk.Frame(date_frame, style="Dark.TFrame")
         r1.pack(fill="x", pady=3)
-        tk.Label(r1, text="File 1 Start Date:", bg=BG_DARK, fg=FG_TEXT,
+        tk.Label(r1, text="Start Date Column:", bg=BG_DARK, fg=FG_TEXT,
                  font=FONT_BODY, width=20, anchor="w").pack(side="left")
         self.date_vars["f1_start"] = tk.StringVar(
-            value=date_cols_1[0] if date_cols_1 else "-- None --"
+            value=default_f1_start
         )
         ttk.Combobox(r1, textvariable=self.date_vars["f1_start"],
-                     values=["-- None --"] + self.cols1, state="readonly",
+                     values=["-- None --"] + self.cols1 + self.cols2, state="readonly",
                      style="Dark.TCombobox", width=25).pack(side="left", padx=(10, 0))
 
         # File 1 end date
         r2 = ttk.Frame(date_frame, style="Dark.TFrame")
         r2.pack(fill="x", pady=3)
-        tk.Label(r2, text="File 1 End Date:", bg=BG_DARK, fg=FG_TEXT,
+        tk.Label(r2, text="End Date Column:", bg=BG_DARK, fg=FG_TEXT,
                  font=FONT_BODY, width=20, anchor="w").pack(side="left")
         self.date_vars["f1_end"] = tk.StringVar(
-            value=date_cols_1[1] if len(date_cols_1) > 1 else "-- None --"
+            value=default_f1_end
         )
         ttk.Combobox(r2, textvariable=self.date_vars["f1_end"],
-                     values=["-- None --"] + self.cols1, state="readonly",
+                     values=["-- None --"] + self.cols1 + self.cols2, state="readonly",
                      style="Dark.TCombobox", width=25).pack(side="left", padx=(10, 0))
 
         # File 2 range column
         r3 = ttk.Frame(date_frame, style="Dark.TFrame")
         r3.pack(fill="x", pady=3)
-        tk.Label(r3, text="File 2 Date/Range:", bg=BG_DARK, fg=FG_TEXT,
+        tk.Label(r3, text="Flight/Range Column:", bg=BG_DARK, fg=FG_TEXT,
                  font=FONT_BODY, width=20, anchor="w").pack(side="left")
         self.date_vars["f2_range"] = tk.StringVar(
-            value=date_cols_2[0] if date_cols_2 else "-- None --"
+            value=default_f2_range
         )
         ttk.Combobox(r3, textvariable=self.date_vars["f2_range"],
-                     values=["-- None --"] + self.cols2, state="readonly",
+                     values=["-- None --"] + self.cols1 + self.cols2, state="readonly",
                      style="Dark.TCombobox", width=25).pack(side="left", padx=(10, 0))
 
         # Run comparison button
@@ -457,7 +494,7 @@ class CSVCompareApp:
             self._set_status("Select at least one key column pair for matching.", ERROR)
             return
 
-        # Build date config
+        # Build date config — simple: user picked the 3 columns, just detect format and compare
         date_config = None
         f1_start = self.date_vars.get("f1_start", tk.StringVar()).get()
         f1_end = self.date_vars.get("f1_end", tk.StringVar()).get()
@@ -465,14 +502,33 @@ class CSVCompareApp:
 
         if (f1_start != "-- None --" and f1_end != "-- None --"
                 and f2_range != "-- None --"):
-            if self.agent:
-                date_config = self.agent.build_date_config(
-                    self.file1_path.get(), self.file2_path.get(),
-                    f1_start, f1_end, f2_range
-                )
+            from comparison_engine import detect_date_format
 
-        # Display columns (all mapped file1 columns)
-        display_cols = list(key_mapping.keys())
+            # Get samples for start/end date — check both loaded dataframes
+            start_samples = []
+            if self.df1 is not None and f1_start in self.df1.columns:
+                start_samples = self.df1[f1_start].dropna().head(5).astype(str).tolist()
+            elif self.df2 is not None and f1_start in self.df2.columns:
+                start_samples = self.df2[f1_start].dropna().head(5).astype(str).tolist()
+
+            # Get samples for flight/range — check both loaded dataframes
+            range_samples = []
+            if self.df1 is not None and f2_range in self.df1.columns:
+                range_samples = self.df1[f2_range].dropna().head(5).astype(str).tolist()
+            elif self.df2 is not None and f2_range in self.df2.columns:
+                range_samples = self.df2[f2_range].dropna().head(5).astype(str).tolist()
+
+            date_config = {
+                "file1_start_col": f1_start,
+                "file1_end_col": f1_end,
+                "file1_date_format": detect_date_format(start_samples),
+                "file2_range_col": f2_range,
+                "file2_date_format": detect_date_format(range_samples),
+            }
+            print(f"[Date Config] {date_config}")
+
+        # Columns for output = all checked (key) columns
+        output_cols = list(key_mapping.keys())
 
         # Output path
         script_dir = os.path.dirname(os.path.abspath(self.file1_path.get()))
@@ -486,7 +542,7 @@ class CSVCompareApp:
                     file1=self.file1_path.get(),
                     file2=self.file2_path.get(),
                     key_mapping=key_mapping,
-                    display_columns=display_cols,
+                    output_columns=output_cols,
                     date_config=date_config,
                     output_path=self.output_path,
                 )
@@ -536,7 +592,7 @@ class CSVCompareApp:
             stats_frame.pack(fill="x", pady=(0, 10))
 
             total = len(self.output_df)
-            missing_count = len(self.output_df[self.output_df["comment"].str.contains("Missing", na=False)])
+            missing_count = len(self.output_df[self.output_df["comment"].str.contains("Missing from", case=False, na=False)])
             mismatch_count = len(self.output_df[self.output_df["comment"].str.contains("mismatch", na=False)])
 
             for label, value, color in [
@@ -557,7 +613,7 @@ class CSVCompareApp:
 
             # Treeview for data
             columns = list(self.output_df.columns)
-            tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+            tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=12)
 
             # Style the treeview
             style = ttk.Style()
@@ -572,8 +628,10 @@ class CSVCompareApp:
 
             for col in columns:
                 tree.heading(col, text=col.upper())
-                col_width = 400 if col == "comment" else 200
-                tree.column(col, width=col_width, minwidth=100, anchor="w")
+                if col == "comment":
+                    tree.column(col, width=700, minwidth=300, anchor="w", stretch=True)
+                else:
+                    tree.column(col, width=200, minwidth=100, anchor="w", stretch=False)
 
             for _, row in self.output_df.iterrows():
                 values = ["" if str(v).strip().lower() == "nan" else v for v in row]
@@ -587,6 +645,35 @@ class CSVCompareApp:
             yscrollbar.pack(side="right", fill="y")
             xscrollbar.pack(side="bottom", fill="x")
             tree.pack(side="left", fill="both", expand=True)
+
+            # Detail panel — shows full comment for the selected row
+            detail_frame = ttk.Frame(self.results_container, style="Dark.TFrame")
+            detail_frame.pack(fill="x", pady=(8, 0))
+
+            ttk.Label(detail_frame, text="SELECTED ROW COMMENT:",
+                      style="Heading.TLabel").pack(anchor="w")
+
+            comment_detail = tk.Text(
+                detail_frame,
+                bg=BG_INPUT, fg=NEON_GREEN, font=FONT_MONO,
+                bd=0, wrap="word", height=4,
+                highlightthickness=1, highlightcolor=BG_CARD,
+                highlightbackground=BG_CARD,
+                state="disabled",
+            )
+            comment_detail.pack(fill="x", pady=(4, 0))
+
+            def on_row_select(event):
+                selected = tree.selection()
+                if selected:
+                    values = tree.item(selected[0], "values")
+                    comment_text = values[-1] if values else ""
+                    comment_detail.configure(state="normal")
+                    comment_detail.delete("1.0", "end")
+                    comment_detail.insert("1.0", comment_text)
+                    comment_detail.configure(state="disabled")
+
+            tree.bind("<<TreeviewSelect>>", on_row_select)
 
             # Export button
             ttk.Button(self.results_container,
@@ -653,9 +740,10 @@ class CSVCompareApp:
         self.chat_input.pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 10))
         self.chat_input.bind("<Return>", lambda e: self._send_chat())
 
-        ttk.Button(input_frame, text="Send",
+        self.send_btn = ttk.Button(input_frame, text="Send",
                    style="Accent.TButton",
-                   command=self._send_chat).pack(side="right")
+                   command=self._send_chat)
+        self.send_btn.pack(side="right")
 
         # Welcome message
         self._append_chat("AGENT", "Hello! Load your files and run a comparison, then ask me anything about the data.", "system")
@@ -668,6 +756,10 @@ class CSVCompareApp:
         self.chat_input.delete(0, "end")
         self._append_chat("YOU", question, "user")
 
+        # Disable input while processing
+        self.send_btn.configure(state="disabled")
+        self.chat_input.configure(state="disabled")
+
         # Build dataframes context
         dfs = {}
         if self.df1 is not None:
@@ -679,14 +771,26 @@ class CSVCompareApp:
 
         if not dfs:
             self._append_chat("AGENT", "Please load files first before asking questions.", "system")
+            self.send_btn.configure(state="normal")
+            self.chat_input.configure(state="normal")
             return
 
         def do_query():
-            if self.agent:
-                answer = self.agent.query_data(question, dfs)
-            else:
-                answer = "Agent is not available. Please wait for it to initialize."
-            self.root.after(0, lambda: self._append_chat("AGENT", answer, "agent"))
+            try:
+                if self.agent:
+                    answer = self.agent.query_data(question, dfs)
+                else:
+                    answer = "Agent is not available. Please wait for it to initialize."
+            except Exception as e:
+                answer = f"Error: {e}"
+
+            def on_response():
+                self._append_chat("AGENT", answer, "agent")
+                self.send_btn.configure(state="normal")
+                self.chat_input.configure(state="normal")
+                self.chat_input.focus_set()
+
+            self.root.after(0, on_response)
 
         threading.Thread(target=do_query, daemon=True).start()
         self._append_chat("AGENT", "Thinking...", "system")
