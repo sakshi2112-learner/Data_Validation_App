@@ -337,7 +337,327 @@ Rewritten comments (one per line):"""
         return output_df
 
     # -------------------------------------------------------
-    # Tool: Q&A over loaded data
+    # Tool: Intent classification
+    # -------------------------------------------------------
+    def _classify_intent(
+        self, question: str, dataframes: dict[str, pd.DataFrame]
+    ) -> str:
+        """
+        Classify what the user is asking about.
+        Returns: 'file1', 'file2', 'results', or 'general'.
+        """
+        q = question.lower()
+
+        # Check for actual file names in the dataframe keys
+        file1_names = []
+        file2_names = []
+        for key in dataframes:
+            key_lower = key.lower()
+            if "file 1" in key_lower or "file1" in key_lower:
+                # Extract filename if present, e.g. "File 1 (Flowchart.xlsx)"
+                file1_names.append(key_lower)
+                if "(" in key and ")" in key:
+                    fname = key[key.index("(") + 1:key.index(")")].lower()
+                    file1_names.extend([fname, fname.replace(".", " "), fname.split(".")[0]])
+            elif "file 2" in key_lower or "file2" in key_lower:
+                file2_names.append(key_lower)
+                if "(" in key and ")" in key:
+                    fname = key[key.index("(") + 1:key.index(")")].lower()
+                    file2_names.extend([fname, fname.replace(".", " "), fname.split(".")[0]])
+
+        # Keyword-based intent classification
+        file1_keywords = [
+            "file 1", "file1", "first file", "flowchart", "flow chart",
+        ] + file1_names
+        file2_keywords = [
+            "file 2", "file2", "second file", "aggregate", "datafeed",
+            "data feed", "data file",
+        ] + file2_names
+        results_keywords = [
+            "result", "comparison", "issue", "mismatch", "missing",
+            "output", "discrepanc", "error", "problem", "difference",
+        ]
+
+        # Count keyword matches for each intent
+        f1_score = sum(1 for kw in file1_keywords if kw in q)
+        f2_score = sum(1 for kw in file2_keywords if kw in q)
+        res_score = sum(1 for kw in results_keywords if kw in q)
+
+        if res_score > f1_score and res_score > f2_score:
+            return "results"
+        if f1_score > f2_score:
+            return "file1"
+        if f2_score > f1_score:
+            return "file2"
+
+        return "general"
+
+    # -------------------------------------------------------
+    # Tool: Build rich context for LLM
+    # -------------------------------------------------------
+    def _build_rich_context(self, df: pd.DataFrame, df_name: str) -> str:
+        """Build rich context with column stats instead of just sample rows."""
+        if df is None or df.empty:
+            return f"{df_name}: No data loaded."
+
+        parts = [f"--- {df_name} ---"]
+        parts.append(f"Shape: {len(df)} rows × {len(df.columns)} columns")
+        parts.append(f"Columns: {list(df.columns)}")
+
+        # Column details: type, unique count, top values
+        for col in df.columns:
+            unique_count = df[col].nunique()
+            non_null = df[col].notna().sum()
+            parts.append(f"\n  Column '{col}': {unique_count} unique values, {non_null} non-null")
+            if unique_count <= 20:
+                # Show all unique values if few enough
+                vals = df[col].dropna().unique().tolist()
+                vals_str = [str(v) for v in vals[:20]]
+                parts.append(f"    Values: {', '.join(vals_str)}")
+            else:
+                # Show top 10 most common
+                top = df[col].value_counts().head(10)
+                top_str = [f"{v} ({c})" for v, c in zip(top.index, top.values)]
+                parts.append(f"    Top 10: {', '.join(top_str)}")
+
+        return "\n".join(parts)
+
+    # -------------------------------------------------------
+    # Tool: Pandas code generation (the smart layer)
+    # -------------------------------------------------------
+    def _pandas_query(
+        self, question: str, df: pd.DataFrame, df_name: str
+    ) -> str | None:
+        """
+        Ask the LLM to write pandas code to answer the question.
+        Execute it safely and return the result.
+        Returns None if code generation or execution fails.
+        """
+        if df is None or df.empty:
+            return None
+
+        # Build column info with ACTUAL VALUES so the LLM sees exact casing
+        col_info = []
+        for col in df.columns:
+            unique_count = df[col].nunique()
+            if unique_count <= 25:
+                # Show ALL unique values — critical for exact matching
+                vals = df[col].dropna().unique().tolist()
+                vals_str = [str(v) for v in vals]
+                col_info.append(f"  '{col}': {unique_count} unique values: {vals_str}")
+            else:
+                # Show top values for high-cardinality columns
+                top = df[col].value_counts().head(8)
+                top_str = [str(v) for v in top.index.tolist()]
+                col_info.append(f"  '{col}': {unique_count} unique values, top values: {top_str}")
+
+        col_context = "\n".join(col_info)
+
+        # Detect if the user wants a list/names vs a count
+        q_lower = question.lower()
+        wants_list = any(kw in q_lower for kw in [
+            "what are", "which", "show", "list", "tell me", "name",
+            "give me", "display", "all the", "all unique",
+        ])
+        wants_count = any(kw in q_lower for kw in [
+            "how many", "count", "total", "number of",
+        ])
+
+        if wants_list and not wants_count:
+            output_hint = "Return a LIST of values (use .unique().tolist() or .tolist()), NOT a count."
+        elif wants_count:
+            output_hint = "Return a NUMBER (use .nunique() for unique count or len() for total count)."
+        else:
+            output_hint = "Return the most appropriate result for the question."
+
+        prompt = f"""You have a pandas DataFrame `df` with {len(df)} rows and these columns:
+{col_context}
+
+Question: "{question}"
+
+Write ONE pandas expression to answer this. Rules:
+- Use `df` directly (it's already defined)
+- IMPORTANT: Use the EXACT column names and values shown above (they are case-sensitive!)
+- For text filtering, use .str.contains('value', case=False, na=False) for safety
+- {output_hint}
+- Output ONLY the code expression, nothing else
+- No imports, no print, no comments
+
+Code:"""
+
+        code = self._generate_and_clean_code(prompt)
+        if not code:
+            return None
+
+        print(f"[Pandas Query] Generated code: {code}")
+
+        # Execute the code
+        result = self._safe_exec(code, df)
+
+        # Safety net: if result is 0 or empty but the question mentions data values,
+        # retry with a more explicit prompt
+        if result is not None and self._is_empty_result(result):
+            # Try once more with a simpler approach
+            retry_prompt = f"""DataFrame `df` columns and values:
+{col_context}
+
+Question: "{question}"
+
+The previous code returned 0/empty. Write a DIFFERENT pandas expression.
+Use .str.contains('keyword', case=False, na=False) for ALL text comparisons.
+Output ONLY the code, nothing else:"""
+
+            retry_code = self._generate_and_clean_code(retry_prompt)
+            if retry_code and retry_code != code:
+                print(f"[Pandas Query] Retry code: {retry_code}")
+                retry_result = self._safe_exec(retry_code, df)
+                if retry_result is not None and not self._is_empty_result(retry_result):
+                    return self._format_result(retry_result)
+
+        if result is not None:
+            return self._format_result(result)
+
+        return None
+
+    def _generate_and_clean_code(self, prompt: str) -> str | None:
+        """Ask LLM for pandas code and clean the response."""
+        response = self._ask_llm(
+            prompt,
+            "You are a pandas code generator. Output ONLY one line of executable pandas code. No explanations, no markdown, no comments, no extra text.",
+            max_tokens=150,
+        )
+        if not response:
+            return None
+
+        code = response.strip()
+
+        # Remove markdown code blocks if present
+        if "```" in code:
+            lines = code.split("\n")
+            code_lines = []
+            in_block = False
+            for line in lines:
+                if line.strip().startswith("```"):
+                    in_block = not in_block
+                    continue
+                if in_block:
+                    code_lines.append(line)
+            code = "\n".join(code_lines).strip() if code_lines else code
+
+        # Take only the first meaningful line
+        for line in code.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#") and not line.startswith("import"):
+                code = line
+                break
+
+        # Remove any print() wrapping
+        if code.startswith("print(") and code.endswith(")"):
+            code = code[6:-1]
+
+        # Safety check
+        dangerous = ["import ", "exec(", "eval(", "open(", "os.", "sys.",
+                      "subprocess", "shutil", "__", "globals", "locals",
+                      "delattr", "setattr", "getattr", "compile", "input("]
+        if any(d in code for d in dangerous):
+            return None
+
+        return code
+
+    def _safe_exec(self, code: str, df: pd.DataFrame):
+        """Execute pandas code safely. Returns result or None."""
+        try:
+            namespace = {"df": df, "pd": pd}
+            result = eval(code, {"__builtins__": {}}, namespace)
+            return result
+        except Exception as e:
+            print(f"[Pandas Query] Code failed: {code} | Error: {e}")
+            return None
+
+    def _is_empty_result(self, result) -> bool:
+        """Check if a result is effectively empty/zero."""
+        if result is None:
+            return True
+        if isinstance(result, (int, float)) and result == 0:
+            return True
+        if isinstance(result, pd.DataFrame) and result.empty:
+            return True
+        if isinstance(result, pd.Series) and result.empty:
+            return True
+        if isinstance(result, (list, set)) and len(result) == 0:
+            return True
+        return False
+
+    def _format_result(self, result) -> str | None:
+        """Format a pandas query result into a readable string."""
+        if result is None:
+            return None
+
+        if isinstance(result, pd.DataFrame):
+            if result.empty:
+                return "No matching records found."
+            return f"Found {len(result)} records:\n{result.to_string(index=False, max_rows=25)}"
+        elif isinstance(result, pd.Series):
+            if result.empty:
+                return "No matching data found."
+            return result.to_string()
+        elif isinstance(result, (list, set)):
+            items = list(result)
+            if not items:
+                return "No results found."
+            return f"Found {len(items)} items: {', '.join(str(x) for x in items[:50])}"
+        elif isinstance(result, (int, float)):
+            return str(result)
+        else:
+            return str(result)
+
+    # -------------------------------------------------------
+    # Tool: Results-specific Q&A (fast path)
+    # -------------------------------------------------------
+    def _results_qa(
+        self, question: str, output_df: pd.DataFrame
+    ) -> str | None:
+        """Fast rule-based answers for comparison results questions."""
+        if output_df is None or output_df.empty:
+            return None
+
+        q = question.lower()
+
+        if "missing" in q:
+            missing = output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)]
+            if not missing.empty:
+                return f"There are {len(missing)} missing records:\n{missing.to_string(index=False)}"
+            return "No missing records found."
+
+        if "mismatch" in q or ("date" in q and ("issue" in q or "problem" in q or "wrong" in q or "error" in q)):
+            mismatches = output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)]
+            if not mismatches.empty:
+                return f"There are {len(mismatches)} date mismatches:\n{mismatches.to_string(index=False)}"
+            return "No date mismatches found."
+
+        # Generic count questions about results
+        if any(kw in q for kw in ["how many", "count", "total", "number of"]):
+            total = len(output_df)
+            missing_c = len(output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)])
+            mismatch_c = len(output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)])
+            return f"Total issues: {total}\n- Missing records: {missing_c}\n- Date mismatches: {mismatch_c}"
+
+        if any(kw in q for kw in ["summary", "overview", "all issue", "all result", "show result"]):
+            total = len(output_df)
+            missing_c = len(output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)])
+            mismatch_c = len(output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)])
+            return (
+                f"Comparison found {total} issues:\n"
+                f"- Missing records: {missing_c}\n"
+                f"- Date mismatches: {mismatch_c}\n\n"
+                f"{output_df.to_string(index=False, max_rows=25)}"
+            )
+
+        # Not a clearly results-specific question
+        return None
+
+    # -------------------------------------------------------
+    # Tool: Q&A over loaded data (SMART orchestrator)
     # -------------------------------------------------------
     def query_data(
         self,
@@ -345,103 +665,167 @@ Rewritten comments (one per line):"""
         dataframes: dict[str, pd.DataFrame],
     ) -> str:
         """
-        Answer a question about the loaded CSV data.
-        Tries rule-based first (instant), falls back to LLM for complex questions.
+        Smart Q&A orchestrator.
+        1. Classify intent (what is the user asking about?)
+        2. Route to the right data source
+        3. Try pandas code generation for data questions
+        4. Fall back to LLM with rich context
         """
-        # Try rule-based first — instant answers for common questions
-        rule_answer = self._rule_based_qa(question, dataframes)
-        if not rule_answer.startswith("I can answer questions about"):
-            return rule_answer
+        q = question.lower().strip()
 
-        # Fall back to LLM for complex questions
-        if not self.available:
-            return rule_answer
+        # Find dataframes by role
+        output_df = None
+        df1 = None
+        df2 = None
+        df1_name = "File 1"
+        df2_name = "File 2"
 
-        # Build minimal context for speed
+        for key, df in dataframes.items():
+            key_lower = key.lower()
+            if "output" in key_lower or "result" in key_lower:
+                output_df = df
+            elif "file 1" in key_lower or "file1" in key_lower:
+                df1 = df
+                df1_name = key
+            elif "file 2" in key_lower or "file2" in key_lower:
+                df2 = df
+                df2_name = key
+
+        # Step 1: Classify intent
+        intent = self._classify_intent(question, dataframes)
+        print(f"[Agent] Intent: {intent} | Question: {question}")
+
+        # Step 2: Route based on intent
+        if intent == "results":
+            # Try rule-based results first (instant)
+            rule_answer = self._results_qa(question, output_df)
+            if rule_answer:
+                return rule_answer
+            # Try pandas code-gen on results
+            if output_df is not None and not output_df.empty and self.available:
+                pandas_answer = self._pandas_query(question, output_df, "Comparison Results")
+                if pandas_answer:
+                    return pandas_answer
+
+        elif intent == "file1":
+            if df1 is not None and not df1.empty:
+                # Try pandas code-gen on File 1
+                if self.available:
+                    pandas_answer = self._pandas_query(question, df1, df1_name)
+                    if pandas_answer:
+                        return pandas_answer
+                # Fallback: basic file info
+                return self._basic_file_info(df1, df1_name)
+            return "File 1 is not loaded. Please load files first."
+
+        elif intent == "file2":
+            if df2 is not None and not df2.empty:
+                # Try pandas code-gen on File 2
+                if self.available:
+                    pandas_answer = self._pandas_query(question, df2, df2_name)
+                    if pandas_answer:
+                        return pandas_answer
+                # Fallback: basic file info
+                return self._basic_file_info(df2, df2_name)
+            return "File 2 is not loaded. Please load files first."
+
+        else:  # general
+            # Try all sources
+            # First try files with pandas code-gen
+            for df, name in [(df1, df1_name), (df2, df2_name), (output_df, "Comparison Results")]:
+                if df is not None and not df.empty and self.available:
+                    pandas_answer = self._pandas_query(question, df, name)
+                    if pandas_answer:
+                        return f"From {name}:\n{pandas_answer}"
+
+            # Try rule-based results
+            if output_df is not None:
+                rule_answer = self._results_qa(question, output_df)
+                if rule_answer:
+                    return rule_answer
+
+        # Step 3: LLM fallback with rich context
+        if self.available:
+            return self._llm_fallback(question, intent, dataframes)
+
+        # Step 4: No LLM available — provide basic info
+        return self._no_llm_fallback(question, dataframes)
+
+    def _basic_file_info(self, df: pd.DataFrame, name: str) -> str:
+        """Basic file information when we can't do code-gen."""
+        if df is None or df.empty:
+            return f"{name}: No data."
+        parts = [f"{name}: {len(df)} rows, {len(df.columns)} columns"]
+        parts.append(f"Columns: {', '.join(df.columns)}")
+        # Show unique value counts for each column
+        for col in df.columns:
+            unique = df[col].nunique()
+            parts.append(f"  {col}: {unique} unique values")
+        return "\n".join(parts)
+
+    def _llm_fallback(
+        self, question: str, intent: str, dataframes: dict[str, pd.DataFrame]
+    ) -> str:
+        """LLM fallback with rich context (column stats, value counts)."""
         context_parts = []
-        for name, df in dataframes.items():
+
+        # Build rich context for relevant dataframes
+        for key, df in dataframes.items():
             if df is not None and not df.empty:
-                context_parts.append(
-                    f"--- {name} ---\n"
-                    f"Columns: {list(df.columns)}\n"
-                    f"Total rows: {len(df)}\n"
-                    f"Sample (first 5 rows):\n{df.head(5).to_string(index=False)}\n"
-                )
+                key_lower = key.lower()
+                # Only include relevant context based on intent
+                if intent == "file1" and "file 1" not in key_lower:
+                    continue
+                if intent == "file2" and "file 2" not in key_lower:
+                    continue
+                if intent == "results" and "output" not in key_lower and "result" not in key_lower:
+                    continue
 
-        context = "\n".join(context_parts)
+                context_parts.append(self._build_rich_context(df, key))
 
-        prompt = f"""You are an assistant that ONLY answers questions about the CSV data provided below.
-Do NOT answer general knowledge questions, coding questions, or anything unrelated to this data.
-If the question is not about the data, say "I can only answer questions about your loaded CSV files and comparison results."
+        # If intent filtering gave us nothing, include everything
+        if not context_parts:
+            for key, df in dataframes.items():
+                if df is not None and not df.empty:
+                    context_parts.append(self._build_rich_context(df, key))
 
-Data:
+        context = "\n\n".join(context_parts)
+
+        prompt = f"""You are a data analysis assistant. Answer questions about the CSV data below.
+IMPORTANT: Base your answer ONLY on the actual data provided. Be precise with numbers.
+If the question is not about this data, say "I can only answer questions about your loaded CSV files and comparison results."
+
+Data Context:
 {context}
 
 Question: {question}
 
-Answer concisely based ONLY on the data above:"""
+Answer clearly and concisely:"""
 
         response = self._ask_llm(
             prompt,
-            "You are a CSV data analysis assistant. ONLY answer questions about the provided CSV data and comparison results. Refuse any unrelated questions. Be concise.",
-            max_tokens=128,
+            "You are a precise CSV data analysis assistant. Answer based ONLY on the provided data. Give exact numbers and specific details. Be concise but complete.",
+            max_tokens=300,
         )
         if not response:
             return "I could not generate an answer. Please try rephrasing your question."
         return response
 
-    def _rule_based_qa(
+    def _no_llm_fallback(
         self, question: str, dataframes: dict[str, pd.DataFrame]
     ) -> str:
-        """Comprehensive rule-based Q&A fallback when LLM is not available."""
+        """Fallback when LLM is not available — basic info from data."""
         q = question.lower()
-        output_df = dataframes.get("Output")
-        df1 = dataframes.get("File 1")
-        df2 = dataframes.get("File 2")
 
-        # Questions about comparison results
-        if output_df is not None and not output_df.empty:
-            if "missing" in q:
-                missing = output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)]
-                if not missing.empty:
-                    return f"There are {len(missing)} missing records:\n{missing.to_string(index=False)}"
-                return "No missing records found."
+        # Try to give some useful info even without LLM
+        parts = []
+        for key, df in dataframes.items():
+            if df is not None and not df.empty:
+                parts.append(f"{key}: {len(df)} rows, {len(df.columns)} columns")
+                parts.append(f"  Columns: {', '.join(df.columns)}")
 
-            if "mismatch" in q or "date" in q:
-                mismatches = output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)]
-                if not mismatches.empty:
-                    return f"There are {len(mismatches)} date mismatches:\n{mismatches.to_string(index=False)}"
-                return "No date mismatches found."
+        if parts:
+            return "Here's what I know about your data:\n" + "\n".join(parts) + \
+                   "\n\nNote: LLM is offline. For detailed answers, please ensure Ollama is running with phi3:mini."
 
-            if "how many" in q or "count" in q or "total" in q:
-                total = len(output_df)
-                missing_c = len(output_df[output_df["comment"].str.contains("Missing from", case=False, na=False)])
-                mismatch_c = len(output_df[output_df["comment"].str.contains("mismatch", case=False, na=False)])
-                return f"Total issues: {total}\n- Missing records: {missing_c}\n- Date mismatches: {mismatch_c}"
-
-            if "summary" in q or "result" in q or "issue" in q:
-                return f"Comparison found {len(output_df)} issues:\n{output_df.to_string(index=False, max_rows=20)}"
-
-        # Questions about individual files
-        if ("column" in q or "field" in q) and df1 is not None:
-            cols1 = list(df1.columns) if df1 is not None else []
-            cols2 = list(df2.columns) if df2 is not None else []
-            return f"File 1 columns ({len(cols1)}): {', '.join(cols1)}\nFile 2 columns ({len(cols2)}): {', '.join(cols2)}"
-
-        if ("row" in q or "record" in q) and ("how many" in q or "count" in q):
-            parts = []
-            if df1 is not None:
-                parts.append(f"File 1: {len(df1)} rows")
-            if df2 is not None:
-                parts.append(f"File 2: {len(df2)} rows")
-            return "\n".join(parts) if parts else "No files loaded."
-
-        if "file" in q and ("info" in q or "about" in q or "detail" in q):
-            parts = []
-            if df1 is not None:
-                parts.append(f"File 1: {len(df1)} rows, {len(df1.columns)} columns")
-            if df2 is not None:
-                parts.append(f"File 2: {len(df2)} rows, {len(df2.columns)} columns")
-            return "\n".join(parts) if parts else "No files loaded."
-
-        return "I can answer questions about: missing records, date mismatches, column names, row counts, and comparison results. Try asking about one of these!"
+        return "No files loaded. Please load files first in the FILES tab."

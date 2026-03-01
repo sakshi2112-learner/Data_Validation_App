@@ -836,14 +836,16 @@ class CSVCompareApp:
         self.send_btn.configure(state="disabled")
         self.chat_input.configure(state="disabled")
 
-        # Build dataframes context
+        # Build dataframes context with actual filenames
         dfs = {}
         if self.df1 is not None:
-            dfs["File 1"] = self.df1
+            f1_basename = os.path.basename(self.file1_path.get()) if self.file1_path.get() else ""
+            dfs[f"File 1 ({f1_basename})" if f1_basename else "File 1"] = self.df1
         if self.df2 is not None:
-            dfs["File 2"] = self.df2
+            f2_basename = os.path.basename(self.file2_path.get()) if self.file2_path.get() else ""
+            dfs[f"File 2 ({f2_basename})" if f2_basename else "File 2"] = self.df2
         if self.output_df is not None:
-            dfs["Output"] = self.output_df
+            dfs["Output (Comparison Results)"] = self.output_df
 
         if not dfs:
             self._append_chat("AGENT", "Please load files first before asking questions.", "system")
