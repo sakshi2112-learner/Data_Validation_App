@@ -606,8 +606,6 @@ class CSVCompareApp:
                     os.remove(self.output_path)
 
                 self.root.after(0, lambda: self._show_results(result))
-                # After results are shown, prompt user to save
-                self.root.after(500, self._prompt_save_results)
 
             except Exception as e:
                 self.root.after(0, lambda: self._set_status(f"Error: {e}", ERROR))
@@ -643,9 +641,13 @@ class CSVCompareApp:
                   wraplength=700).pack(anchor="w", pady=(0, 15))
 
         if self.output_df is not None and not self.output_df.empty:
-            # Summary stats
-            stats_frame = ttk.Frame(self.results_container, style="Dark.TFrame")
-            stats_frame.pack(fill="x", pady=(0, 10))
+            # Top bar: stats + export button side by side
+            top_bar = ttk.Frame(self.results_container, style="Dark.TFrame")
+            top_bar.pack(fill="x", pady=(0, 10))
+
+            # Summary stats (left side)
+            stats_frame = ttk.Frame(top_bar, style="Dark.TFrame")
+            stats_frame.pack(side="left")
 
             total = len(self.output_df)
             missing_count = len(self.output_df[self.output_df["comment"].str.contains("Missing from", case=False, na=False)])
@@ -662,6 +664,12 @@ class CSVCompareApp:
                          font=(FONT_FAMILY, 20, "bold")).pack()
                 tk.Label(stat_card, text=label, bg=BG_CARD, fg=FG_DIM,
                          font=FONT_SMALL).pack()
+
+            # Export button (right side, same row as stats)
+            ttk.Button(top_bar,
+                       text="💾  EXPORT RESULTS",
+                       style="Accent.TButton",
+                       command=self._export_results).pack(side="right", padx=(10, 0))
 
             # Table
             table_frame = ttk.Frame(self.results_container, style="Dark.TFrame")
@@ -731,11 +739,7 @@ class CSVCompareApp:
 
             tree.bind("<<TreeviewSelect>>", on_row_select)
 
-            # Export button
-            ttk.Button(self.results_container,
-                       text="💾  EXPORT TO CUSTOM LOCATION",
-                       style="Dark.TButton",
-                       command=self._export_results).pack(pady=(10, 0))
+
 
         else:
             ttk.Label(self.results_container,

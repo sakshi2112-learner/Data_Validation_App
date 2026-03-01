@@ -68,16 +68,25 @@ def smart_read_file(filepath: str, skip_rows: int = None) -> pd.DataFrame:
     """
     Read a CSV or Excel file with smart header detection.
     If skip_rows is provided, uses that. Otherwise auto-detects the header row.
+    Handles merged cells in Excel by forward-filling NaN values.
     """
     if skip_rows is None:
         header_row = _detect_header_row(filepath)
     else:
         header_row = skip_rows
 
-    if filepath.lower().endswith(('.xlsx', '.xls')):
+    is_excel = filepath.lower().endswith(('.xlsx', '.xls'))
+
+    if is_excel:
         df = pd.read_excel(filepath, header=header_row)
     else:
         df = pd.read_csv(filepath, header=header_row)
+
+    # Handle merged/blank cells in any file type:
+    # When pandas reads merged cells (or blank repeated values in CSV),
+    # only the first row gets the value, the rest become NaN.
+    # Forward-fill fixes this by copying the value down.
+    df = df.ffill()
 
     # Drop fully empty rows and columns
     df = df.dropna(how='all').dropna(axis=1, how='all')

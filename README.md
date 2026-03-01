@@ -1,6 +1,6 @@
 # ⚡ CSV Compare Agent
 
-A desktop application that compares two CSV files (e.g., a **Flowchart** and an **Aggregate/Data Feed**) to find missing vendor records and date mismatches. Built with Python, it uses a **local AI agent** (Ollama + Phi-3 Mini) for smart column mapping and Q&A — fully offline, no data leaves your machine.
+A desktop application that compares two CSV/Excel files (e.g., a **Flowchart** and an **Aggregate/Data Feed**) to find missing vendor records and date mismatches. Handles **merged cells** in Excel automatically. Built with Python, it uses a **local AI agent** (Ollama + Phi-3 Mini) for smart column mapping and Q&A — fully offline, no data leaves your machine.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Ollama](https://img.shields.io/badge/AI-Ollama%20%2B%20Phi--3-green)
@@ -14,6 +14,7 @@ A desktop application that compares two CSV files (e.g., a **Flowchart** and an 
 - **Finds missing records** — identifies vendors/tactics present in one file but missing from the other, with clear comments mentioning the filename
 - **Detects date mismatches** — extracts months from start/end date columns and compares against flight/range columns (e.g., `Jan - Jun`), supporting any date format
 - **Smart column mapping** — AI suggests how to map columns with different names across the two files; works with 10+ columns
+- **Merged cell handling** — automatically forward-fills blank cells caused by merged rows in Excel/CSV, so files with merged cells and files with repeated values compare correctly
 - **Flexible date parsing** — handles any date format (`MM/DD/YY`, `DD-MM-YYYY`, `YYYY-MM-DD`, etc.) using pandas auto-detection
 - **Output control** — only columns you explicitly check/map appear in the output CSV, plus a descriptive `comment` column
 - **Chat Q&A** — ask natural language questions about your loaded data and comparison results
@@ -81,7 +82,7 @@ The app features a gamer-style dark theme with neon accents, organized into 4 ta
 
 ## 📖 How to Use
 
-1. **Load Files** — In the FILES tab, browse and select your Flowchart (File 1) and Aggregate/Data Feed (File 2) CSV files
+1. **Load Files** — In the FILES tab, browse and select your Flowchart (File 1) and Aggregate/Data Feed (File 2) CSV/Excel files. Merged cells are handled automatically — no need to unmerge them first
 2. **Map Columns** — The app auto-suggests column mappings. Review, adjust, and check which columns are key columns for matching
 3. **Configure Dates** — Select start date, end date, and flight/range columns for date validation. The app auto-detects date formats
 4. **Run Comparison** — Click "RUN COMPARISON" to find missing records and date mismatches
@@ -170,6 +171,7 @@ The agent operates with a **two-layer approach**:
 - **Case-insensitive matching** — Column names are normalized to lowercase for comparison
 - **Performance on large files** — Row-by-row comparison may be slow on files with 100K+ rows
 - **Single delimiter support** — Assumes comma-separated CSV; tab-delimited or semicolon files may not work
+- **Merged cell forward-fill** — Blank cells are always filled with the value above them; if a cell is intentionally blank (not a merged cell), it will still be filled
 
 ---
 
